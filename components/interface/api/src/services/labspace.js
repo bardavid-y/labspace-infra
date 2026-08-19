@@ -1,0 +1,167 @@
+import { parse } from "yaml";
+import fs from "fs";
+import path from "path";
+
+export class LabspaceService {
+  constructor() {
+    this.sections = [];
+    this.services = [];
+    this.variables = {};
+  }
+
+  async bootstrap() {
+    const labspaceYaml = fs.readFileSync(
+      path.join("/labspace", "instructions", "labspace.yaml"),
+      "utf8",
+    );
+    this.config = parse(labspaceYaml);
+
+    if (!this.config.services) {
+      this.config.services = [];
+    } else {
+      this.config.services = this.config.services.map((service) => ({
+        ...service,
+        id:
+          service.id ||
+          service.title
+            .toLowerCase()
+            .replace(/[^a-z0-9\s-]/g, "") // remove special characters except spaces and dashes
+            .replace(/\s+/g, "-"), // replace spaces with dashes
+      }));
+    }
+
+    this.config.sections = this.config.sections.map((section) => ({
+      ...section,
+      id: section.title
+        .toLowerCase()
+        .replace(/[^a-z0-9\s-]/g, "") // remove special characters except spaces and dashes
+        .replace(/\s+/g, "-"), // replace spaces with dashes
+    }));
+
+    if (this.config.variables) {
+      this.variables = { ...this.config.variables, ...this.variables };
+    }
+  }
+
+  getLabspaceDetails() {
+    if (process.env.CONTENT_DEV_MODE) this.bootstrap();
+
+    const details = {
+      title: this.config.title,
+      subtitle: this.config.description,
+      sections: this.config.sections.map((section) => ({
+        id: section.id,
+        title: section.title,
+      })),
+      services: this.config.services.map((service) => ({
+        id: service.id,
+        title: service.title,
+        icon: service.icon,
+        url: service.url,
+      })),
+    };
+
+    if (process.env.CONTENT_DEV_MODE) {
+      details.devMode = true;
+    }
+
+    return details;
+  }
+
+  getSectionDetails(sectionId) {
+    if (process.env.CONTENT_DEV_MODE) this.bootstrap();
+
+    const section = this.config.sections.find(
+      (section) => section.id === sectionId,
+    );
+
+    if (!section) {
+      console.warn(`Section with id ${sectionId} not found`);
+      return null;
+    }
+
+    return this._loadSectionContent(section);
+  }
+
+  getAllSectionDetails() {
+    if (process.env.CONTENT_DEV_MODE) this.bootstrap();
+
+    return this.config.sections.map((section) =>
+      this._loadSectionContent(section),
+    );
+  }
+
+  _loadSectionContent(section) {
+    const filePath = path.join(
+      "/labspace",
+      "instructions",
+      section.contentPath,
+    );
+    const content = fs
+      .readFileSync(filePath, "utf8")
+      .replace(/\$\$([^\$]+)\$\$/g, (_, varName) => {
+        const key = varName.trim();
+        const has =
+          this.variables &&
+          Object.prototype.hasOwnProperty.call(this.variables, key);
+        const value = has ? this.variables[key] : undefined;
+        if (value === undefined || value === null) return key;
+        return String(value);
+      })
+      .replace(/\\\$\\\$/g, "$$$$"); // Allow the usage of \$\$ to render as $$ in the markdown
+
+    return {
+      id: section.id,
+      title: section.title,
+      content,
+    };
+  }
+
+  getSectionIndex(sectionId) {
+    return this.config.sections.findIndex(
+      (section) => section.id === sectionId,
+    );
+  }
+
+  setVariable(key, value) {
+    this.variables[key] = value;
+  }
+
+  getVariables() {
+    return this.variables;
+  }
+
+  getCodeBlock(sectionId, index) {
+    const { content } = this.getSectionDetails(sectionId);
+    const codeBlocks = content.match(/```(.*?)```/gs);
+    if (!codeBlocks || codeBlocks[index] === undefined) {
+      throw new Error(
+        `Code block at index ${index} not found in section ${sectionId}`,
+      );
+    }
+
+    const codeRows = codeBlocks[index].split("\n");
+    const headerRow = codeRows.shift().substring(3);
+    codeRows.pop(); // remove the closing ```
+
+    const [language, ...metaInfo] = headerRow.split(" ");
+
+    const meta = metaInfo.reduce((acc, cur) => {
+      const [key, value] = cur.split("=");
+      acc[key.trim()] = value ? value : "true";
+      return acc;
+    }, {});
+
+    // Get the indentation to trim off extra text that might occur
+    // when a code block is nested inside a list item
+    const indentation = codeRows[0].match(/^\s*/)[0].length;
+
+    return {
+      language,
+      code: codeRows.map((row) => row.substring(indentation)).join("\n"),
+      meta,
+    };
+  }
+}
+
+export const labspaceService = new LabspaceService();

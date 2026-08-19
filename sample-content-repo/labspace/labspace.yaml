@@ -1,0 +1,37 @@
+metadata:
+  id: demo
+  sourceRepo: github.com/dockersamples/labspace-infra#sample-content-repo
+  contentVersion: 10.0.0
+
+title: About Labspaces
+description: >
+  This Labspace is intended to help you learn about the capabilities of Labspaces and how you can use them for your own training setups.
+
+sections:
+  - title: What is a Labspace?
+    contentPath: 01-what-is-a-labspace.md
+  - title: The Docker environment
+    contentPath: 02-the-docker-environment.md
+  - title: Markdown directives
+    contentPath: 03-markdown-directives.md
+  - title: Variables
+    contentPath: 04-variables.md
+  - title: Additional elements
+    contentPath: 05-additional-elements.md
+
+# Remove if there is no need to link compose services in the editor ui, icons are from: https://fonts.google.com/icons
+services:
+  - id: marlin
+    title: Marlin
+    url: http://localhost:3030
+    icon: anchor
+  - id: app
+    title: App
+    url: http://localhost
+    icon: web
+
+# Define variables that will be injected into the markdown context. Using variables makes maintenance easier
+# when the same value is used in multiple places. If desired, you can also allow these values to be overridden
+# by the end users.
+variables:
+  pythonImageTag: 3.14-alpine

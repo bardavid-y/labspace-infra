@@ -1,0 +1,16 @@
+{
+    // NOTE: If making changes to this file, be sure to check the development mode
+    // for Labspaces (this file is overridden in the content development Compose file).
+    "remote.autoForwardPorts": false,
+    "security.workspace.trust.enabled": false,
+    "window.autoDetectColorScheme": true,
+    "terminal.integrated.env.linux": {
+        "PATH": "${env:PATH}"
+    },
+    "terminal.integrated.scrollback": 10000,
+
+    // Disable auto-updates for extensions and VS Code itself, mostly for supply chain
+    // security reasons, but also to avoid breaking changes with lab sessions.
+    "update.mode": "none",
+    "extensions.autoUpdate": false
+}

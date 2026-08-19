@@ -1,0 +1,85 @@
+name: ci
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - '*'
+
+jobs:
+  bake:
+    name: Build/push images/Compose files
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Login to DockerHub
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Login to DHI.io
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
+        with:
+          registry: dhi.io
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+        with:
+          driver: cloud
+          endpoint: ${{ secrets.DOCKER_BUILDER_ENDPOINT }}
+
+      - name: Set tag for builds
+        run: |
+          if [[ "${GITHUB_REF}" == "refs/heads/main" ]]; then
+            echo "IMAGE_TAG=dev" >> $GITHUB_ENV
+          else
+            TAG="${GITHUB_REF#refs/tags/}"
+            echo "IMAGE_TAG=${TAG}" >> $GITHUB_ENV
+          fi
+
+      - name: Build and push tagged image
+        uses: docker/bake-action@82490499d2e5613fcead7e128237ef0b0ea210f7 # v7.0.0
+        with:
+          push: true
+
+      # Ensure Compose v2.39.3+ is available (includes bug fixes for publishing)
+      # Can remove this action once default runners include it
+      - name: Set up Docker Compose
+        uses: docker/setup-compose-action@8cccb8c14b6500aaffebff1aa49c502c34d2e5e6 # v2.1.0
+        with:
+          version: v2.39.3
+
+      - name: Publish Compose files
+        run: |
+          export CONTENT_PATH="/placeholder"
+          
+          docker compose version
+
+          if [[ "${GITHUB_REF}" == "refs/heads/main" ]]; then
+            sed -i "s/:latest/:dev/g" compose.run.yaml
+            sed -i "s/:latest/:dev/g" compose.override.content-dev.yaml
+            echo "y" | docker compose -f compose.run.yaml publish dockersamples/labspace:dev --with-env -y
+            echo "y" | docker compose -f compose.run.yaml -f compose.override.sdlc.yaml publish dockersamples/labspace:dev-sdlc --with-env -y
+            echo "y" | docker compose -f compose.run.yaml -f compose.override.content-dev.yaml publish dockersamples/labspace-content-dev:dev --with-env -y
+            echo "y" | docker compose -f compose.run.yaml -f compose.override.content-dev.yaml -f compose.override.sdlc.yaml publish dockersamples/labspace-content-dev:dev-sdlc --with-env -y
+          else
+            TAG="${GITHUB_REF#refs/tags/}"
+
+            sed -i "s/:latest/:${TAG}/g" compose.run.yaml
+            sed -i "s/:latest/:${TAG}/g" compose.override.content-dev.yaml
+
+            echo "y" | docker compose -f compose.run.yaml publish dockersamples/labspace:latest --with-env -y
+            echo "y" | docker compose -f compose.run.yaml publish dockersamples/labspace:${TAG} --with-env -y
+            echo "y" | docker compose -f compose.run.yaml -f compose.override.sdlc.yaml publish dockersamples/labspace:latest-sdlc --with-env -y
+            echo "y" | docker compose -f compose.run.yaml -f compose.override.sdlc.yaml publish dockersamples/labspace:${TAG}-sdlc --with-env -y
+            echo "y" | docker compose -f compose.run.yaml -f compose.override.content-dev.yaml publish dockersamples/labspace-content-dev:latest --with-env -y
+            echo "y" | docker compose -f compose.run.yaml -f compose.override.content-dev.yaml publish dockersamples/labspace-content-dev:${TAG} --with-env -y
+            echo "y" | docker compose -f compose.run.yaml -f compose.override.content-dev.yaml -f compose.override.sdlc.yaml publish dockersamples/labspace-content-dev:latest-sdlc --with-env -y
+            echo "y" | docker compose -f compose.run.yaml -f compose.override.content-dev.yaml -f compose.override.sdlc.yaml publish dockersamples/labspace-content-dev:${TAG}-sdlc --with-env -y
+          fi
